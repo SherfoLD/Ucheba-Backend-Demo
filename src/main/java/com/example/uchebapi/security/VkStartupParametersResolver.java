@@ -1,6 +1,7 @@
 package com.example.uchebapi.security;
 
-import lombok.AllArgsConstructor;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Component;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
@@ -11,15 +12,26 @@ import java.util.Date;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-@AllArgsConstructor
+@Component
+@RequiredArgsConstructor
 public class VkStartupParametersResolver {
 
-    private final Map<String, String> startupParameters;
+    private Map<String, String> startupParameters;
     private static final int EXPIRATION_TIME = 1000 * 60 * 60; // 60 минут по документации
     private static final String ENCODING = "UTF-8";
     private static final String clientSecret = "DELETED";
 
-    public Integer getVkId() {
+    /**
+     * Checks startup parameters
+     *
+     * @return vkId of a user or {@code -1} if parameters were incorrect/expired
+     */
+    public Integer getVkId(Map<String, String> startupParameters) {
+        this.startupParameters = startupParameters;
+
+        if (!isStartupParametersCorrect() || !isStartupParametersNotExpired())
+            return -1;
+
         String vkId = startupParameters.get("vk_user_id");
         try {
             return Integer.parseInt(vkId);
@@ -28,7 +40,7 @@ public class VkStartupParametersResolver {
         }
     }
 
-    public boolean isStartupParametersNotExpired() {
+    private boolean isStartupParametersNotExpired() {
         try {
             String generationDateParameter = startupParameters.get("vk_ts");
             Date experationDate = new Date(
@@ -42,7 +54,7 @@ public class VkStartupParametersResolver {
         }
     }
 
-    public boolean isStartupParametersCorrect() {
+    private boolean isStartupParametersCorrect() {
         try {
             String checkString = startupParameters.entrySet().stream()
                     .filter(entry -> entry.getKey().startsWith("vk_"))

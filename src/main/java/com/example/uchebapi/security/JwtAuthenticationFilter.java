@@ -12,14 +12,14 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.lang.NonNull;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.web.authentication.preauth.PreAuthenticatedAuthenticationToken;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
-import java.util.Collections;
+import java.util.List;
 import java.util.Optional;
 
 @Slf4j
@@ -31,11 +31,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final JwtService jwtService;
 
     @Override
-    protected void doFilterInternal(
-            @NonNull HttpServletRequest request,
-            @NonNull HttpServletResponse response,
-            @NonNull FilterChain filterChain
-    ) throws ServletException, IOException {
+    protected void doFilterInternal(@NonNull HttpServletRequest request,
+                                    @NonNull HttpServletResponse response,
+                                    @NonNull FilterChain filterChain) throws ServletException, IOException {
 
         String authHeader = request.getHeader("Authorization");
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
@@ -44,26 +42,25 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
 
         String jwt = authHeader.substring(7);
-        String vkId = "";
-        Optional<VkUser> authUser = Optional.empty();
-
         try {
-            vkId = jwtService.extractVkId(jwt);
-            authUser = vkUserRepo.findByVkId(Integer.parseInt(vkId));
+            Integer vkId = Integer.parseInt(jwtService.extractVkId(jwt));
+            Optional<VkUser> authUser = vkUserRepo.findByVkId(vkId);
+
+            if (authUser.isPresent() && SecurityContextHolder.getContext().getAuthentication() == null) {
+                SecurityContextHolder.getContext().setAuthentication(
+                        new PreAuthenticatedAuthenticationToken(
+                                vkId,
+                                null,
+                                List.of(new SimpleGrantedAuthority("AppUser")) //рандомный авторити
+                        ) //Аутентификация проходит ТОЛЬКО если передается авторити в конструктор
+                );
+                log.info("User: " + vkId + " was authenticated");
+            }
+
         } catch (ExpiredJwtException ex) {
             log.error("Access attempt with expired token");
         } catch (SignatureException | MalformedJwtException ex) {
             log.error("Access attempt with counterfeit token");
-        }
-
-        if (authUser.isPresent() && SecurityContextHolder.getContext().getAuthentication() == null) {
-            UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
-                    Integer.parseInt(vkId),
-                    null,
-                    Collections.singleton(new SimpleGrantedAuthority(vkId)) //Аутентификация проходит ТОЛЬКО если передается авторити в конструктор!!!
-            );
-            SecurityContextHolder.getContext().setAuthentication(authToken);
-            logger.info("Successful login for user: " + vkId);
         }
 
         filterChain.doFilter(request, response);

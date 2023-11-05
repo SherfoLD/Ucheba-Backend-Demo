@@ -1,21 +1,20 @@
 package com.example.uchebapi.services;
 
 import com.example.uchebapi.domain.GroupUser;
-import com.example.uchebapi.domain.VkUser;
 import com.example.uchebapi.repos.GroupUserRepo;
-import com.example.uchebapi.repos.VkUserRepo;
+import com.example.uchebapi.security.AuthenticationResponse;
 import com.example.uchebapi.security.JwtService;
 import com.example.uchebapi.security.VkStartupParametersResolver;
-import com.example.uchebapi.security.AuthenticationResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.web.authentication.preauth.PreAuthenticatedAuthenticationToken;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -25,37 +24,25 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class AuthenticationService {
 
-    private final VkUserRepo vkUserRepo;
+    private final VkStartupParametersResolver vkStartupParametersResolver;
     private final GroupUserRepo groupUserRepo;
     private final JwtService jwtService;
 
     public AuthenticationResponse authenticate(Map<String, String> request) {
-        VkStartupParametersResolver vkStartupParametersResolver = new VkStartupParametersResolver(request);
-
-        if (!vkStartupParametersResolver.isStartupParametersCorrect()) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Startup parameters are incorrect");
-        }
-        if (!vkStartupParametersResolver.isStartupParametersNotExpired())
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Startup parameters are expired");
-
-        Integer vkId = vkStartupParametersResolver.getVkId();
-        Optional<VkUser> user = vkUserRepo.findByVkId(vkId);
-        if (user.isEmpty()) {
-            user = Optional.of(
-                    VkUser.builder()
-                            .vkId(vkId)
-                            .build());
-            vkUserRepo.save(user.get());
-        }
+        Integer vkId = vkStartupParametersResolver.getVkId(request);
+        if (vkId == -1)
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid startup parameters");
 
         SecurityContextHolder.getContext().setAuthentication(
-                new UsernamePasswordAuthenticationToken(
+                new PreAuthenticatedAuthenticationToken(
                         vkId,
-                        null
+                        null,
+                        List.of(new SimpleGrantedAuthority("AppUser"))
                 )
         );
-        log.info("Successful login for user: " + vkId);
-        var jwt = jwtService.generateToken(vkId.toString());
+
+        log.info("Authentication token was generated for user: " + vkId);
+        String jwt = jwtService.generateToken(vkId.toString());
 
         return new AuthenticationResponse(jwt);
     }

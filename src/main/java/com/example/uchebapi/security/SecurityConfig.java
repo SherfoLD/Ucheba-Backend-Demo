@@ -52,6 +52,8 @@ public class SecurityConfig {
                                 .requestMatchers("/swagger-ui/**").permitAll()
                                 //https://github.com/spring-projects/spring-boot/issues/28953
                                 .requestMatchers("/error").permitAll()
+                                //for testing
+                                .requestMatchers("/api/user/authenticateDev").permitAll()
 
                                 .anyRequest().authenticated())
                 .sessionManagement((sessionManagement) ->
@@ -60,6 +62,7 @@ public class SecurityConfig {
                         exceptionHandling.authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))
                 .addFilterBefore(jwtRequestFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(corsFilter, ChannelProcessingFilter.class);
+//                .cors();
         return http.build();
     }
 }
